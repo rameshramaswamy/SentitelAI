@@ -1,0 +1,49 @@
+name: "whisper"
+backend: "python"
+max_batch_size: 8 
+
+# Input: Flattened Audio Array (Float32)
+# We assume a fixed max chunk size or padded input for batching simplicity, 
+# or use ragged batching. For simplicity in this iteration, we use a 1D input 
+# and let the Python model handle variable lengths.
+input [
+  {
+    name: "AUDIO_DATA"
+    data_type: TYPE_FP32
+    dims: [ -1 ] # Variable length audio
+  }
+]
+
+# Output: The transcript string
+output [
+  {
+    name: "TRANSCRIPT"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  }
+]
+
+# OPTIMIZATION: Dynamic Batching
+# Triton will wait up to 50ms to gather requests to fill a batch of 8.
+dynamic_batching {
+  preferred_batch_size: [ 4, 8 ]
+  max_queue_delay_microseconds: 50000 
+}
+
+# OPTIMIZATION: Concurrency
+# Run 2 independent Python processes on the GPU.
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+  }
+]
+
+parameters: {
+  key: "model_size"
+  value: { string_value: "base" }
+}
+parameters: {
+  key: "device"
+  value: { string_value: "cuda" }
+}

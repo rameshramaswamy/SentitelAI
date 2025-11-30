@@ -1,0 +1,7 @@
+faster-whisper
+torch
+numpy
+redis
+nats-py
+silero-vad
+onnxruntime

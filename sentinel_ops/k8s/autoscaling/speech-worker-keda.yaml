@@ -1,0 +1,18 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: speech-worker-scaler
+  namespace: sentinel-platform
+spec:
+  scaleTargetRef:
+    name: speech-worker # The Deployment to scale
+  minReplicaCount: 2
+  maxReplicaCount: 50
+  triggers:
+  - type: nats-jetstream
+    metadata:
+      natsServerMonitoringEndpoint: "nats.sentinel-platform.svc.cluster.local:8222"
+      account: "$G" # Default account
+      stream: "AUDIO" # The JetStream Stream Name (Ensure you defined this in code or CLI)
+      consumer: "speech_processor" # The consumer name defined in python
+      lagThreshold: "100" # If lag > 100 messages, add more pods

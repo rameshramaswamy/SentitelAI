@@ -1,0 +1,1 @@
+# Middleware to log every API request

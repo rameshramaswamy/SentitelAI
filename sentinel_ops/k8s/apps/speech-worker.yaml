@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speech-worker
+  namespace: sentinel-platform
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: speech-worker
+  template:
+    metadata:
+      labels:
+        app: speech-worker
+    spec:
+      containers:
+      - name: worker
+        image: sentinel-speech:latest
+        env:
+        - name: NATS_URL
+          value: "nats://nats:4222"
+        - name: TRITON_URL
+          value: "sentinel-triton:8001"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"

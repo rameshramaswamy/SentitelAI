@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  namespace: sentinel-platform
+spec:
+  serviceName: "nats"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nats
+  template:
+    metadata:
+      labels:
+        app: nats
+    spec:
+      containers:
+      - name: nats
+        image: nats:latest
+        args: ["-js", "-m", "8222"]
+        ports:
+        - containerPort: 4222
+        - containerPort: 8222
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  namespace: sentinel-platform
+spec:
+  ports:
+  - port: 4222
+    name: client
+  - port: 8222
+    name: monitor
+  selector:
+    app: nats

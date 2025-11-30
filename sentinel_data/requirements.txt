@@ -1,0 +1,8 @@
+sqlalchemy
+asyncpg
+alembic
+aioboto3
+qdrant-client
+nats-py
+pydantic-settings
+psycopg2-binary

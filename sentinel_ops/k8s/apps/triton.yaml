@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-triton
+  namespace: sentinel-platform
+spec:
+  replicas: 1 # Autoscaler will handle this
+  selector:
+    matchLabels:
+      app: sentinel-triton
+  template:
+    metadata:
+      labels:
+        app: sentinel-triton
+    spec:
+      containers:
+      - name: triton
+        image: sentinel-triton-whisper:latest # Built in Iteration 13
+        # In real K8s, use your registry: e.g., 12345.dkr.ecr.us-east-1.amazonaws.com/sentinel-triton
+        imagePullPolicy: IfNotPresent
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+        ports:
+        - containerPort: 8000 # HTTP
+        - containerPort: 8001 # GRPC
+        - containerPort: 8002 # Metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-triton
+  namespace: sentinel-platform
+spec:
+  ports:
+  - port: 8000
+    name: http
+  - port: 8001
+    name: grpc
+  selector:
+    app: sentinel-triton

@@ -1,0 +1,193 @@
+version: "3.8"
+
+services:
+  # -------------------------------------------------------------------------
+  # CORE INFRASTRUCTURE (Messaging & State)
+  # -------------------------------------------------------------------------
+
+  # Message Broker (NATS JetStream)
+  nats:
+    image: nats:latest
+    container_name: sentinel_nats
+    ports:
+      - "4222:4222" # Client Port
+      - "8222:8222" # Dashboard Port
+    command: "-js" # Enable JetStream Persistence
+    restart: always
+
+  # Session State & Cache (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: sentinel_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  # -------------------------------------------------------------------------
+  # APPLICATION SERVICES
+  # -------------------------------------------------------------------------
+
+  # Ingress Gateway (WebSockets / API)
+  gateway:
+    build:
+      context: ../sentinel_gateway
+      dockerfile: Dockerfile
+    container_name: sentinel_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=dev
+      - NATS_URL=nats://nats:4222
+      - REDIS_URL=redis://redis:6379
+      # Security (Dev Token)
+      - JWT_SECRET=phase1-secret-key-change-me
+    depends_on:
+      - nats
+    # Optimization: Use host network driver for lower latency (Linux only)
+    # or keep bridge for Mac/Windows compatibility:
+    networks:
+      - sentinel_net
+
+  # Speech Inference Engine (Backend Worker)
+  speech_engine:
+    build:
+      context: ../sentinel_speech
+      dockerfile: Dockerfile
+    container_name: sentinel_speech
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Fallback if no GPU is found (it will run on CPU but slower)
+    environment:
+      - NATS_URL=nats://nats:4222
+      - REDIS_URL=redis://redis:6379
+      - WHISPER_MODEL_SIZE=base
+      - DEVICE=cpu # Change to 'cuda' if you have NVIDIA GPU setup
+
+      # OPTIMIZATIONS (Thread Affinity)
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+    volumes:
+      # Cache models locally so we don't redownload on restart
+      - ./models_cache:/root/.cache/huggingface
+    depends_on:
+      - nats
+      - redis
+    networks:
+      - sentinel_net
+
+    postgres:
+    image: postgres:15-alpine
+    container_name: sentinel_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=sentinel
+      - POSTGRES_PASSWORD=sentinel_pass
+      - POSTGRES_DB=sentinel_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    networks:
+      - sentinel_net
+
+  # Vector Database (Qdrant)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: sentinel_qdrant
+    ports:
+      - "6333:6333" # API
+      - "6334:6334" # GRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+    networks:
+      - sentinel_net
+
+  # Object Storage (MinIO - S3 Compatible)
+  minio:
+    image: minio/minio
+    container_name: sentinel_minio
+    ports:
+      - "9000:9000" # API
+      - "9001:9001" # Console
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: always
+    networks:
+      - sentinel_net
+
+  # Data Persistence Worker
+  data_service:
+    build: 
+      context: ../sentinel_data
+      dockerfile: Dockerfile
+    container_name: sentinel_data
+    environment:
+      - NATS_URL=nats://nats:4222
+      - DATABASE_URL=postgresql+asyncpg://sentinel:sentinel_pass@postgres:5432/sentinel_db
+      - QDRANT_URL=http://qdrant:6333
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+    depends_on:
+      - nats
+      - postgres
+      - qdrant
+      - minio
+    networks:
+      - sentinel_net
+
+  audit_service:
+    build: 
+      context: ../sentinel_security
+      dockerfile: Dockerfile
+    container_name: sentinel_audit
+    environment:
+      - NATS_URL=nats://nats:4222
+      - ENV=dev
+      # In Prod, this comes from AWS Secrets Manager
+      - MASTER_KEY=local_dev_master_key_32_bytes_long!!
+    depends_on:
+      - nats
+      - postgres
+    networks:
+      - sentinel_net
+  integration_service:
+    build: 
+      context: ../sentinel_integrations
+      dockerfile: Dockerfile
+    container_name: sentinel_integrations
+    environment:
+      - NATS_URL=nats://nats:4222
+      - DATABASE_URL=postgresql+asyncpg://sentinel:sentinel_pass@postgres:5432/sentinel_db
+      - OPENAI_API_KEY=sk-placeholder
+      - SF_USERNAME=demo
+      - SF_PASSWORD=demo
+      - SF_TOKEN=demo
+    depends_on:
+      - nats
+      - postgres
+    networks:
+      - sentinel_net
+      
+volumes:
+  redis_data:
+  postgres_data:
+  qdrant_data:
+  minio_data:
+
+networks:
+  sentinel_net:
+    driver: bridge

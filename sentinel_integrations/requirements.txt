@@ -1,0 +1,6 @@
+openai
+simple-salesforce
+jinja2
+fastapi
+nats-py
+pydantic-settings

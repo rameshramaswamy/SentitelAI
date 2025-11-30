@@ -1,0 +1,6 @@
+cryptography
+pydantic
+pydantic-settings
+nats-py
+fastapi
+starlette
